@@ -1,8 +1,10 @@
 <template>
   <div id="app">
     <h1>fx(sales)</h1>
-    <div>A tool to show secondary and primary sales on <a
-    href="https://www.fxhash.xyz/" target="_blank">fxhash</a>.</div>
+    <div>
+      A tool to show secondary and primary sales on
+      <a href="https://www.fxhash.xyz/" target="_blank">fxhash</a>.
+    </div>
     <div>
       Enter wallet address:
       <input v-model="addr" type="text" />
@@ -19,102 +21,14 @@
       <input type="radio" id="mints" v-model="salesMode" value="primary" />
       <label for="mints">Mints(Primary Sales)</label>
     </div>
-
-    <!-- SECONDARY SALES -->
-
-    <table v-if="secondarySales.length > 0 && salesMode == 'secondary'">
-      <tr>
-        <td></td>
-        <td><h3>Token Name</h3></td>
-        <td><h3>Sold for</h3></td>
-        <td>
-          <h3>Royalties<br />Received</h3>
-        </td>
-        <td><h3>Buyer</h3></td>
-        <td><h3>Seller</h3></td>
-        <td><h3>Timestamp</h3></td>
-      </tr>
-      <tr v-for="(sales, i) in secondarySales" :key="i">
-        <td>{{ i + 1 }}</td>
-        <td>
-          <a
-            :href="'https://www.fxhash.xyz/objkt/' + sales.objktID"
-            target="_blank"
-            >{{ sales.tokenName }}</a
-          >
-        </td>
-        <td>{{ sales.soldPrice }}</td>
-        <td>{{ sales.amount }}</td>
-        <td>
-          <a :href="'https://tzkt.io/' + sales.buyerAddress" target="_blank">{{
-            sales.buyerAlias || shortenAddress(sales.buyerAddress)
-          }}</a>
-        </td>
-        <td>
-          <a :href="'https://tzkt.io/' + sales.sellerAddress" target="_blank">{{
-            sales.sellerAlias || shortenAddress(sales.sellerAddress)
-          }}</a>
-        </td>
-        <td>
-          <a :href="'https://tzkt.io/' + sales.operationHash" target="_blank">{{
-            sales.timestamp
-          }}</a>
-        </td>
-      </tr>
-      <tr v-if="secondarySales.length > 1">
-        <td></td>
-        <td>Total:</td>
-        <td>
-          {{
-            secondarySales
-              .reduce((prev, next) => ({
-                soldPrice: prev.soldPrice + next.soldPrice,
-              }))
-              .soldPrice.toFixed(5)
-          }}
-        </td>
-        <td>
-          {{
-            secondarySales.reduce((prev, next) => ({
-              amount: prev.amount + next.amount,
-            })).amount
-          }}
-        </td>
-        <td></td>
-        <td></td>
-        <td></td>
-      </tr>
-    </table>
-    <table v-if="salesMode == 'primary'">
-      <tr>
-        <td></td>
-        <td><h3>amount received</h3></td>
-        <td><h3>Buyer</h3></td>
-        <td><h3>Token Name</h3></td>
-        <td><h3>Timestamp</h3></td>
-      </tr>
-      <tr v-for="(sales, i) in primarySales" :key="i">
-        <td>{{ i + 1 }}</td>
-        <td>{{ sales.amount }}</td>
-        <td>
-          <a :href="'https://tzkt.io/' + sales.buyerAddress" target="_blank">{{
-            sales.buyerAlias || shortenAddress(sales.buyerAddress)
-          }}</a>
-        </td>
-        <td>
-          <a
-            :href="'https://www.fxhash.xyz/objkt/' + sales.objktID"
-            target="_blank"
-            >{{ sales.tokenName }}</a
-          >
-        </td>
-        <td>
-          <a :href="'https://tzkt.io/' + sales.operationHash" target="_blank">{{
-            sales.timestamp
-          }}</a>
-        </td>
-      </tr>
-    </table>
+    <div>
+      <button v-on:click="exportCSV">csv export</button>
+      {{ loading }}
+    </div>
+    <sales-table
+      :type="salesMode"
+      :data="[salesMode == 'secondary' ? { secondarySales } : { primarySales }]"
+    ></sales-table>
     <footer>
       Made by
       <a href="https://twitter.com/sam___tsao" target="_blank">Sam Tsao</a>
@@ -124,11 +38,12 @@
 
 <script>
 import appendQueries from "./mixins/appendQueries";
+import SalesTable from "./components/SalesTable.vue";
 
 export default {
   name: "App",
   mixins: [appendQueries],
-  components: {},
+  components: { SalesTable },
   data: () => ({
     salesMode: "secondary",
     addr: "",
@@ -148,6 +63,16 @@ export default {
   created() {
     this.checkURLQuery();
   },
+  computed: {
+    loading: function () {
+      let check = this.salesMode == "secondary" ? this.secondarySales : this.primarySales;
+      if (check.filter((s) => s.tokenName === "loading...").length > 0) {
+        return "Data is still loading. Please wait.";
+      } else {
+        return "Data has finished loading. Download ready.";
+      }
+    },
+  },
   methods: {
     checkURLQuery: function () {
       let urlParams = new URLSearchParams(window.location.search);
@@ -157,17 +82,88 @@ export default {
         if (this.salesMode == "primary") this.getPrimarySales();
       }
     },
+    exportCSV: function () {
+      let rows = [];
+      let amt = this.salesMode == "secondary" ? "Royalties" : "Amount";
+      rows.push([
+        "Token Name",
+        amt,
+        "Buyer Alias",
+        "Buyer Address",
+        "Date",
+        "Time",
+        "Isostring",
+        "Transaction",
+      ]);
+      let check = this.salesMode == "secondary" ? this.secondarySales : this.primarySales;
+      check.forEach((sale) => {
+        let row = [];
+        row.push(sale.tokenName);
+        row.push(sale.amount);
+        let alias = sale.buyerAlias;
+        if (alias) {
+          alias = alias.replace(",", "");
+        } else {
+          alias = "No Alias";
+        }
+        row.push(alias);
+        row.push(sale.buyerAddress);
+        let date = new Date(sale.timestamp);
+        let year = date.getFullYear();
+        let month = date.getMonth() + 1;
+        let day = date.getDate();
+        let hour = date.getHours();
+        let minute = date.getMinutes();
+        let seconds = date.getSeconds();
+        let time = `${hour.toString().padStart(2, "0")}:${minute
+          .toString()
+          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+        date = `${year}/${month.toString().padStart(2, "0")}/${day
+          .toString()
+          .padStart(2, "0")}`;
+        row.push(date);
+        row.push(time);
+        row.push(sale.timestamp);
+        row.push("https://tzkt.io/" + sale.operationHash);
+        rows.push(row);
+      });
+      let csv = rows.map((e) => e.join(",")).join("\n");
+      var download = function (content, fileName, mimeType) {
+        var a = document.createElement("a");
+        mimeType = mimeType || "application/octet-stream";
+
+        if (navigator.msSaveBlob) {
+          // IE10
+          navigator.msSaveBlob(
+            new Blob([content], {
+              type: mimeType,
+            }),
+            fileName
+          );
+        } else if (URL && "download" in a) {
+          //html5 A[download]
+          a.href = URL.createObjectURL(
+            new Blob([content], {
+              type: mimeType,
+            })
+          );
+          a.setAttribute("download", fileName);
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          location.href =
+            "data:application/octet-stream," + encodeURIComponent(content); // only this mime type is supported
+        }
+      };
+      download(csv, "test.csv", "text/csv;encoding:utf-8");
+    },
     search: function () {
       window.history.replaceState(null, null, "?addr=" + this.addr);
       if (this.salesMode == "secondary" && this.secondarySales.length == 0)
         this.getSecondarySalesTx();
       if (this.salesMode == "primary" && this.primarySales.length == 0)
         this.getPrimarySales();
-    },
-    shortenAddress: function (addr) {
-      let first = addr.substring(0, 4);
-      let last = addr.substring(31);
-      return first + "..." + last;
     },
     getPrimarySales: async function () {
       this.primarySales = [];
@@ -192,7 +188,6 @@ export default {
             sales.timestamp = dat[i].timestamp;
             sales.issuerID = "";
             sales.objktID = "";
-            sales.CID = "";
             sales.buyerAddress = "";
             sales.buyerAlias = "";
             sales.tokenName = "loading...";
@@ -204,6 +199,7 @@ export default {
         }
         counter++;
         if (counter > 100) {
+          //set limit for while loop
           finished = true;
         }
       }
@@ -217,7 +213,7 @@ export default {
       sale.buyerAddress = dat[0].sender.address;
       sale.buyerAlias = dat[0].sender.alias;
       sale.objktID = dat[dat.length - 1].parameter.value.token_id;
-      this.assignCID(sale);
+      this.assignName(sale);
     },
     getSecondarySalesTx: async function () {
       this.secondarySales = [];
@@ -241,7 +237,6 @@ export default {
         sales.tokenName = "loading...";
         sales.objktID = "";
         sales.soldPrice = "";
-        sales.CID = "";
         sales.sellerAddress = "";
         sales.sellerAlias = "";
         this.assignObjktID(sales); //ASYNC
@@ -254,14 +249,13 @@ export default {
       let res = await fetch(endpoint);
       let dat = await res.json();
       let objktID = dat[0].diffs[0].content.value.objkt_id;
-      //console.log(dat)
       sale.soldPrice = dat[0].amount / Math.pow(10, 6);
       sale.sellerAddress = dat[4].target.address;
       sale.sellerAlias = dat[4].target.alias;
       sale.objktID = objktID;
-      this.assignCID(sale);
+      this.assignName(sale);
     },
-    assignCID: async function (sale) {
+    assignName: async function (sale) {
       let endpoint = this.bcd + "tokens/mainnet/metadata";
       let query = this.appendQueries(endpoint, {
         contract: this.tokenContract,
@@ -269,15 +263,7 @@ export default {
       });
       let res = await fetch(query);
       let dat = await res.json();
-      sale.CID =
-        dat[0].token_info[Object.keys(dat[0].token_info)[0]].substring(7);
-      this.assignName(sale);
-    },
-    assignName: async function (sale) {
-      const ipfslink = "https://gateway.ipfs.io/ipfs/" + sale.CID;
-      const ipfsResponse = await fetch(ipfslink);
-      const ipfsData = await ipfsResponse.json();
-      sale.tokenName = ipfsData.name;
+      sale.tokenName = dat[0].name;
     },
   },
 };
