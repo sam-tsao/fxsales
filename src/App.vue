@@ -213,6 +213,7 @@ export default {
       sale.buyerAddress = dat[0].sender.address;
       sale.buyerAlias = dat[0].sender.alias;
       sale.objktID = dat[dat.length - 1].parameter.value.token_id;
+      sale.CID = ""
       this.assignName(sale);
     },
     getSecondarySalesTx: async function () {
@@ -239,6 +240,7 @@ export default {
         sales.soldPrice = "";
         sales.sellerAddress = "";
         sales.sellerAlias = "";
+        sales.CID = ""
         this.assignObjktID(sales); //ASYNC
         this.secondarySales.push(sales);
       }
@@ -263,8 +265,19 @@ export default {
       });
       let res = await fetch(query);
       let dat = await res.json();
-      sale.tokenName = dat[0].name;
+      sale.CID = dat[0].token_info["@@empty"].substring("7")
+      if(dat[0].name == "Unknown"){
+        this.getIPFSName(sale)
+      } else {
+        sale.tokenName = dat[0].name
+      }
     },
+    getIPFSName: async function(sale){
+      let query = "https://ipfs.io/ipfs/" + sale.CID
+      let res = await fetch(query)
+      let dat = await res.json()
+      sale.tokenName = dat.name
+    }
   },
 };
 </script>
