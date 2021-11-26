@@ -5,11 +5,7 @@
       A tool to show secondary and primary sales on
       <a href="https://www.fxhash.xyz/" target="_blank">fxhash</a>.
     </div>
-    <div>
-      Enter wallet address:
-      <input v-model="addr" type="text" />
-      <button v-on:click="search">go</button>
-    </div>
+    <address-input @clicked="addressEntered"/>
     <div>
       <input
         type="radio"
@@ -37,13 +33,15 @@
 </template>
 
 <script>
-import appendQueries from "./mixins/appendQueries";
+import AddressInput from "./components/AddressInput.vue"
 import SalesTable from "./components/SalesTable.vue";
+import appendQueries from "./mixins/appendQueries";
+import csvUtils from "./mixins/csvUtils";
 
 export default {
   name: "App",
-  mixins: [appendQueries],
-  components: { SalesTable },
+  mixins: [appendQueries, csvUtils],
+  components: { SalesTable, AddressInput },
   data: () => ({
     salesMode: "secondary",
     addr: "",
@@ -54,6 +52,7 @@ export default {
     primarySales: [],
     tokenContract: "KT1KEa8z6vWXDJrVqtMrAeDVzsvxat3kHaCE",
     bcd: "https://api.better-call.dev/v1/",
+    fxhash: "https://api.fxhash.xyz/graphql",
   }),
   watch: {
     salesMode: function () {
@@ -65,7 +64,8 @@ export default {
   },
   computed: {
     loading: function () {
-      let check = this.salesMode == "secondary" ? this.secondarySales : this.primarySales;
+      let check =
+        this.salesMode == "secondary" ? this.secondarySales : this.primarySales;
       if (check.filter((s) => s.tokenName === "loading...").length > 0) {
         return "Data is still loading. Please wait.";
       } else {
@@ -74,6 +74,13 @@ export default {
     },
   },
   methods: {
+    addressEntered: function(val){
+      this.addr = val
+      if (this.salesMode == "secondary" && this.secondarySales.length == 0)
+        this.getSecondarySalesTx();
+      if (this.salesMode == "primary" && this.primarySales.length == 0)
+        this.getPrimarySales();
+    },
     checkURLQuery: function () {
       let urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get("addr")) {
@@ -95,75 +102,14 @@ export default {
         "Isostring",
         "Transaction",
       ]);
-      let check = this.salesMode == "secondary" ? this.secondarySales : this.primarySales;
+      let check =
+        this.salesMode == "secondary" ? this.secondarySales : this.primarySales;
       check.forEach((sale) => {
-        let row = [];
-        row.push(sale.tokenName);
-        row.push(sale.amount);
-        let alias = sale.buyerAlias;
-        if (alias) {
-          alias = alias.replace(",", "");
-        } else {
-          alias = "No Alias";
-        }
-        row.push(alias);
-        row.push(sale.buyerAddress);
-        let date = new Date(sale.timestamp);
-        let year = date.getFullYear();
-        let month = date.getMonth() + 1;
-        let day = date.getDate();
-        let hour = date.getHours();
-        let minute = date.getMinutes();
-        let seconds = date.getSeconds();
-        let time = `${hour.toString().padStart(2, "0")}:${minute
-          .toString()
-          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-        date = `${year}/${month.toString().padStart(2, "0")}/${day
-          .toString()
-          .padStart(2, "0")}`;
-        row.push(date);
-        row.push(time);
-        row.push(sale.timestamp);
-        row.push("https://tzkt.io/" + sale.operationHash);
+       let row = this.addEntry(sale)
         rows.push(row);
       });
       let csv = rows.map((e) => e.join(",")).join("\n");
-      var download = function (content, fileName, mimeType) {
-        var a = document.createElement("a");
-        mimeType = mimeType || "application/octet-stream";
-
-        if (navigator.msSaveBlob) {
-          // IE10
-          navigator.msSaveBlob(
-            new Blob([content], {
-              type: mimeType,
-            }),
-            fileName
-          );
-        } else if (URL && "download" in a) {
-          //html5 A[download]
-          a.href = URL.createObjectURL(
-            new Blob([content], {
-              type: mimeType,
-            })
-          );
-          a.setAttribute("download", fileName);
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        } else {
-          location.href =
-            "data:application/octet-stream," + encodeURIComponent(content); // only this mime type is supported
-        }
-      };
-      download(csv, "test.csv", "text/csv;encoding:utf-8");
-    },
-    search: function () {
-      window.history.replaceState(null, null, "?addr=" + this.addr);
-      if (this.salesMode == "secondary" && this.secondarySales.length == 0)
-        this.getSecondarySalesTx();
-      if (this.salesMode == "primary" && this.primarySales.length == 0)
-        this.getPrimarySales();
+      this.download(csv, `${this.salesMode}Sales.csv`, "text/csv;encoding:utf-8");
     },
     getPrimarySales: async function () {
       this.primarySales = [];
@@ -213,8 +159,8 @@ export default {
       sale.buyerAddress = dat[0].sender.address;
       sale.buyerAlias = dat[0].sender.alias;
       sale.objktID = dat[dat.length - 1].parameter.value.token_id;
-      sale.CID = ""
-      this.assignName(sale);
+      sale.CID = "";
+      this.getName(sale);
     },
     getSecondarySalesTx: async function () {
       this.secondarySales = [];
@@ -240,7 +186,7 @@ export default {
         sales.soldPrice = "";
         sales.sellerAddress = "";
         sales.sellerAlias = "";
-        sales.CID = ""
+        sales.CID = "";
         this.assignObjktID(sales); //ASYNC
         this.secondarySales.push(sales);
       }
@@ -255,29 +201,27 @@ export default {
       sale.sellerAddress = dat[4].target.address;
       sale.sellerAlias = dat[4].target.alias;
       sale.objktID = objktID;
-      this.assignName(sale);
+      this.getName(sale);
     },
-    assignName: async function (sale) {
-      let endpoint = this.bcd + "tokens/mainnet/metadata";
-      let query = this.appendQueries(endpoint, {
-        contract: this.tokenContract,
-        token_id: sale.objktID,
+    getName: async function (sale) {
+      let q = `{objkt(id:${sale.objktID}){name}}`;
+      let res = await this.postQuery(q);
+      sale.tokenName = res.data.objkt.name;
+    },
+    postQuery: async function (query) {
+      let res = await fetch(this.fxhash, {
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        method: "post",
+        body: JSON.stringify({
+          query: query,
+        }),
       });
-      let res = await fetch(query);
       let dat = await res.json();
-      sale.CID = dat[0].token_info["@@empty"].substring("7")
-      if(dat[0].name == "Unknown"){
-        this.getIPFSName(sale)
-      } else {
-        sale.tokenName = dat[0].name
-      }
+      return dat;
     },
-    getIPFSName: async function(sale){
-      let query = "https://ipfs.io/ipfs/" + sale.CID
-      let res = await fetch(query)
-      let dat = await res.json()
-      sale.tokenName = dat.name
-    }
   },
 };
 </script>
