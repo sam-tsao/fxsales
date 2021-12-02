@@ -25,23 +25,22 @@
       :type="salesMode"
       :data="[salesMode == 'secondary' ? { secondarySales } : { primarySales }]"
     ></sales-table>
-    <footer>
-      Made by
-      <a href="https://twitter.com/sam___tsao" target="_blank">Sam Tsao</a>
-    </footer>
+    <site-footer/>
+    
   </div>
 </template>
 
 <script>
 import AddressInput from "./components/AddressInput.vue"
 import SalesTable from "./components/SalesTable.vue";
+import SiteFooter from "./components/SiteFooter.vue"
 import appendQueries from "./mixins/appendQueries";
 import csvUtils from "./mixins/csvUtils";
 
 export default {
   name: "App",
   mixins: [appendQueries, csvUtils],
-  components: { SalesTable, AddressInput },
+  components: { SalesTable, AddressInput, SiteFooter },
   data: () => ({
     salesMode: "secondary",
     addr: "",
@@ -56,7 +55,8 @@ export default {
   }),
   watch: {
     salesMode: function () {
-      this.search();
+      // this.search();
+    this.checkURLQuery();
     },
   },
   created() {
@@ -123,6 +123,7 @@ export default {
           status: "applied",
           limit: 100,
           offset: counter * 100,
+          "sort.desc": "id"
         });
         let res = await fetch(query);
         let dat = await res.json();
@@ -137,15 +138,14 @@ export default {
             sales.buyerAddress = "";
             sales.buyerAlias = "";
             sales.tokenName = "loading...";
-            this.getTransactionData(sales);
             this.primarySales.push(sales);
+            await this.getTransactionData(sales);
           }
         } else {
           finished = true;
         }
         counter++;
         if (counter > 100) {
-          //set limit for while loop
           finished = true;
         }
       }
@@ -187,8 +187,8 @@ export default {
         sales.sellerAddress = "";
         sales.sellerAlias = "";
         sales.CID = "";
-        this.assignObjktID(sales); //ASYNC
         this.secondarySales.push(sales);
+        await this.assignObjktID(sales); //ASYNC
       }
     },
     assignObjktID: async function (sale) {
