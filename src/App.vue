@@ -55,7 +55,6 @@ export default {
   }),
   watch: {
     salesMode: function () {
-      // this.search();
     this.checkURLQuery();
     },
   },
@@ -75,6 +74,8 @@ export default {
   },
   methods: {
     addressEntered: function(val){
+      this.primarySales = []
+      this.secondarySales = []
       this.addr = val
       if (this.salesMode == "secondary" && this.secondarySales.length == 0)
         this.getSecondarySalesTx();
@@ -82,6 +83,8 @@ export default {
         this.getPrimarySales();
     },
     checkURLQuery: function () {
+      this.primarySales = []
+      this.secondarySales = []
       let urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get("addr")) {
         this.addr = urlParams.get("addr");
